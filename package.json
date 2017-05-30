@@ -1,7 +1,7 @@
 {
-  "name": "mylib",
-  "version": "1.0.0",
-  "description": "mylib base",
+  "name": "my-jslib",
+  "version": "1.0.1",
+  "description": "my-jslib base",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
