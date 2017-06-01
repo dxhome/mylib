@@ -1,6 +1,8 @@
 'use strict';
 
 const through = require('through');
+const mime = require('mime');
+const async = require('async');
 const mylib = require('storj-lib');
 const consts = require('./.consts');
 
@@ -85,6 +87,69 @@ mylib.BridgeClient.prototype._getSliceParams = function(frame, bytesStart, bytes
         trimFront: trimFront,
         trimBack: trimBack
     };
+};
+
+/**
+ * create empty file entry on server side
+ * @param id - bucket id
+ * @param token - PUSH token
+ * @param opts - options
+ * @param cb
+ * @returns {*}
+ */
+mylib.BridgeClient.prototype.storeEmptyFileInBucket = function(id, token, opts, cb) {
+    let self = this;
+    let retry = 0;
+    let fileName = opts.fileName;
+
+    if (typeof file !== 'string' || ! file.readable) {
+        return cb(new Error('File name must be a string or readable stream.'))
+    }
+
+    function _createFileStagingFrame(next) {
+        self._logger.info('Creating empty file staging frame');
+        self.createFileStagingFrame(function(err, frame) {
+            if (err) {
+                self._logger.error(err.message);
+                return next(err);
+            }
+
+            next(null, frame);
+        });
+    }
+
+    function _completeFileEntry(frame, next) {
+        self._logger.info('Creating empty file entry.. (retry: %s)', retry);
+        self._request('POST', '/buckets/' + id + '/files', {
+            frame: frame.id,
+            mimetype: mime.lookup(fileName),
+            filename: fileName
+        }, function(err, fileobj) {
+            if (err) {
+                if (retry < 6) {
+                    retry++;
+                    return _completeFileEntry(frame, next);
+                }
+
+                self._logger.error(err.message);
+                return next(err);
+            }
+
+            next(null, fileobj);
+        });
+    }
+
+    async.waterfall([
+        _createFileStagingFrame,
+        _completeFileEntry,
+    ], function (err, fileobj) {
+        if (err) {
+            return cb(err);
+        }
+
+        cb(null, fileobj);
+    })
+
 };
 
 /**
