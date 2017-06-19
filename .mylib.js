@@ -102,10 +102,6 @@ mylib.BridgeClient.prototype.storeEmptyFileInBucket = function(id, token, opts, 
     let retry = 0;
     let fileName = opts.fileName;
 
-    if (typeof file !== 'string' || ! file.readable) {
-        return cb(new Error('File name must be a string or readable stream.'))
-    }
-
     function _createFileStagingFrame(next) {
         self._logger.info('Creating empty file staging frame');
         self.createFileStagingFrame(function(err, frame) {
