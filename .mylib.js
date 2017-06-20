@@ -148,6 +148,59 @@ mylib.BridgeClient.prototype.storeEmptyFileInBucket = function(id, token, opts, 
 
 };
 
+
+/**
+ * Create a stream for a given slice of a file; return 'encryptionKey' from token
+ * @param {Object} options
+ * @param {String} options.bucket - The bucket ID
+ * @param {String} options.file - The file ID
+ * @param {Number} options.start - The byte position to start slice
+ * @param {Number} options.end - The byte position to end slice
+ */
+mylib.BridgeClient.prototype.createFileSliceStream2 = function(options, callback) {
+    let self = this;
+
+    self.getFrameFromFile(options.bucket, options.file, function(err, frame) {
+        if (err) {
+            return callback(err);
+        }
+
+        let sliceOpts = self._getSliceParams(frame, options.start, options.end);
+
+        self.createToken(options.bucket, 'PULL', function(err, token) {
+            if (err) {
+                return callback(err);
+            }
+
+            self.getFilePointers({
+                bucket: options.bucket,
+                token: token.token,
+                file: options.file,
+                skip: sliceOpts.skip,
+                limit: sliceOpts.limit
+            }, function(err, pointers) {
+                if (err) {
+                    return callback(err);
+                }
+
+                self.resolveFileFromPointers(pointers, function(err, stream) {
+                    if (err) {
+                        return callback(err);
+                    }
+
+                    let trimStream = stream.pipe(mylib.utils.createStreamTrimmer(
+                        sliceOpts.trimFront,
+                        options.end - options.start
+                    ));
+                    trimStream.encryptionKey = token.encryptionKey;
+
+                    callback(null, stream.pipe(trimStream));
+                });
+            });
+        });
+    });
+};
+
 /**
  * Returns a through stream that trims the output based on the given range
  * @param {Number} trimFront - Number of bytes to trim off front of stream
