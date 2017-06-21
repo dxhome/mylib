@@ -56,7 +56,7 @@ mylib.BridgeClient.prototype.updateFileInfo = function (bucketid, fileid, hmac, 
  */
 mylib.BridgeClient.prototype._getSliceParams = function(frame, bytesStart, bytesEnd) {
     var skip = 0;
-    var limit = 0;
+    var limit = 1;
     var count = 0;
     var trimFront = 0;
     var trimBack = 0;
@@ -64,6 +64,10 @@ mylib.BridgeClient.prototype._getSliceParams = function(frame, bytesStart, bytes
     var trimBackSet = false;
 
     frame.shards.forEach(function(shard) {
+        if (typeof shard !== 'object') {
+            throw new Error('shard in frame is not an object; maybe server code is not up-to-date');
+        }
+
         count += shard.size;
 
         if (bytesStart > count) {
@@ -226,7 +230,7 @@ mylib.utils.createStreamTrimmer = function (trimFront, totalBytes) {
         let rangeEnd = (next > (trimFront + totalBytes)) ?
             (trimFront + totalBytes) - offset : data.length;
 
-        let trimmedSlice = data.slice(rangeStart, rangeEnd);
+        let trimmedSlice = data.slice(rangeStart, rangeEnd+1);
         readBytes += trimmedSlice.length;
 
         this.queue(trimmedSlice);
