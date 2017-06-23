@@ -187,6 +187,8 @@ mylib.BridgeClient.prototype.createFileSliceStream2 = function(options, callback
                     return callback(err);
                 }
 
+                self._logger.info('Retrieving data from %d pointer(s).. ', pointers.length);
+
                 self.resolveFileFromPointers(pointers, function(err, stream) {
                     if (err) {
                         return callback(err);
@@ -211,27 +213,37 @@ mylib.BridgeClient.prototype.createFileSliceStream2 = function(options, callback
  * @param {Number} totalBytes - The total length of the stream in bytes
  */
 mylib.utils.createStreamTrimmer = function (trimFront, totalBytes) {
-    let next = 0;
-    let readBytes = 0;
-
     return through(function(data) {
-        next += data.length;
-        let offset = next - data.length;
+        if (this.name === undefined) {
+            this.name = String(Math.random()*1000).slice(0,5);
+        }
+        if (this.next === undefined) {
+            this.next = 0;
+        }
+        if (this.readBytes === undefined) {
+            this.readBytes = 0;
+        }
 
-        if (readBytes >= totalBytes) {
+        this.next += data.length;
+        let offset = this.next - data.length;
+
+        if (this.readBytes >= totalBytes) {
             return this.queue(null);
         }
 
-        if (trimFront > next) {
+        if (trimFront > this.next) {
             return this.queue(new Buffer([]));
         }
 
+        // console.log('%s: %d %d %d %d %d %d', this.name, data.length, offset, this.next, this.readBytes, trimFront, totalBytes);
+
         let rangeStart = (offset > trimFront) ? 0 : (trimFront - offset);
-        let rangeEnd = (next > (trimFront + totalBytes)) ?
+        let rangeEnd = (this.next > (trimFront + totalBytes)) ?
             (trimFront + totalBytes) - offset : data.length;
 
+        // console.log('%s: trimmedSlice %d - %d', this.name, rangeStart, rangeEnd+1);
         let trimmedSlice = data.slice(rangeStart, rangeEnd+1);
-        readBytes += trimmedSlice.length;
+        this.readBytes += trimmedSlice.length;
 
         this.queue(trimmedSlice);
     });
