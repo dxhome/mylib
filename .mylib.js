@@ -194,13 +194,16 @@ mylib.BridgeClient.prototype.createFileSliceStream2 = function(options, callback
                         return callback(err);
                     }
 
-                    let trimStream = stream.pipe(mylib.utils.createStreamTrimmer(
-                        sliceOpts.trimFront,
-                        options.end - options.start
-                    ));
-                    trimStream.encryptionKey = token.encryptionKey;
+                    // let trimStream = stream.pipe(mylib.utils.createStreamTrimmer(
+                    //     sliceOpts.trimFront,
+                    //     options.end - options.start + 1
+                    // ));
+                    // trimStream.encryptionKey = token.encryptionKey;
+                    //
+                    // callback(null, stream.pipe(trimStream));
 
-                    callback(null, stream.pipe(trimStream));
+                    stream.encryptionKey = token.encryptionKey;
+                    callback(null, stream);
                 });
             });
         });
