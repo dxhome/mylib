@@ -287,11 +287,12 @@ mylib.BridgeClient.prototype.destroyUploadById = function (id, callback) {
 /**
  * complete an upload
  * @param id - upload id
+ * @param parts - parts to complete upload
  * @param callback
  * @returns {{abort}}
  */
-mylib.BridgeClient.prototype.completeUploadById = function (id, callback) {
-    return this._request('POST', '/uploads/'+id, {}, callback);
+mylib.BridgeClient.prototype.completeUploadById = function (id, parts, callback) {
+    return this._request('POST', '/uploads/'+id, {parts: parts}, callback);
 };
 
 /**
