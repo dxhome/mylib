@@ -251,4 +251,99 @@ mylib.utils.createStreamTrimmer = function (trimFront, totalBytes) {
 
 mylib.constants.NET_REENTRY = 30000;
 
+/**
+ * create a new upload
+ * @param upload - upload content (.bucket, .filename, .mimetype)
+ * @param callback
+ * @returns {{abort}}
+ */
+mylib.BridgeClient.prototype.createUpload = function (upload, callback) {
+    return this._request('POST', '/uploads', upload, callback);
+};
+
+/**
+ * get an upload
+ * @param id - upload id
+ * @param callback
+ * @returns {{abort}}
+ */
+mylib.BridgeClient.prototype.getUploadById = function (id, callback) {
+    return this._request('GET', '/uploads/'+id, {}, callback);
+};
+
+/**
+ * abort an upload
+ * @param id - upload id
+ * @param callback
+ * @returns {{abort}}
+ */
+mylib.BridgeClient.prototype.destroyUploadById = function (id, callback) {
+    return this._request('DELETE', '/uploads/'+id, {}, callback);
+};
+
+/**
+ * complete an upload
+ * @param id - upload id
+ * @param callback
+ * @returns {{abort}}
+ */
+mylib.BridgeClient.prototype.completeUploadById = function (id, callback) {
+    return this._request('POST', '/uploads/'+id, {}, callback);
+};
+
+/**
+ * add a new part to upload
+ * @param id - upload id
+ * @param partNum - part number
+ * @param size - size of content
+ * @param content - upload part content, a file or readable stream
+ * @param callback
+ * @returns {{abort}}
+ */
+mylib.BridgeClient.prototype.addUploadPart = function (id, partNum, size, content, callback) {
+    let self = this;
+
+    self.getUploadById(id, (err, upload) => {
+        if (err) {
+            return callback(err);
+        }
+
+        self.createToken(upload.bucket, 'PUSH', function(err, token) {
+            if (err) {
+                return callback(err);
+            }
+
+            // store part as a normal file first and remove bucket entry right after success
+            // use the left frame to create a part
+            self.storeFileInBucket(upload.bucket, token, content, {
+                fileName: `part${partNum}-${upload.name}`,
+                fileSize: size,
+            }, (err, file) => {
+                if (err) {
+                    return callback(err);
+                }
+
+                // remove file entry but keep frame
+                self.removeFileFromBucket(upload.bucket, file.id, (err) => {
+                    if (err) {
+                        return callback(err);
+                    }
+
+                    // add part
+                    let partBody = {
+                        partnum: partNum,
+                        frame: file.frame,
+                        hmac: file.hmac,
+                    };
+                    return this._request('POST', '/uploads/' + id + '/parts', partBody, callback);
+                });
+            });
+        });
+
+    });
+
+
+
+};
+
 module.exports = mylib;
