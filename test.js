@@ -5,6 +5,7 @@ const mylib = require('.');
 const JSLogger = require('my-jslogger');
 const async = require('async');
 const Readable = require('stream').Readable;
+const randomstring = require("randomstring");
 
 let logger = new JSLogger();
 logger.pipe(process.stdout);
@@ -15,43 +16,67 @@ let password = process.env.PASSWORD || 'password';
 let bucketName = 'myBucket';
 
 describe('Mylib Test - ', function () {
+    this.timeout(600000);
+
     let client;
     let bucket;
+    let filename = randomstring.generate({
+        length: 12,
+        charset: 'alphabetic'
+    });
+
+    function _getBucketId (user, bucketName) {
+        return mylib.utils.calculateBucketId(user, bucketName);
+    }
+
+    function _randomStr() {
+
+    }
 
     before((done) => {
         let options = {
             baseURI: server,
             logger: logger,
-            requestTimeout: 3000,
+            requestTimeout: 30000,
             basicAuth: {
                 email: user,
                 password: password},
         };
         client = mylib.BridgeClient(server, options);
 
-        // create a new bucket
-        client.createBucket({name: bucketName}, (err, data) => {
+        let bucketid = _getBucketId(user, bucketName);
+
+        client.getBucketById(bucketid, (err, data) => {
             if (err) {
-                return done(err);
+                // create a new bucket
+                client.createBucket({name: bucketName}, (err, data) => {
+                    if (err) {
+                        return done(err);
+                    }
+
+                    bucket = data;
+                    return done();
+                });
+            } else {
+                bucket = data;
+                return done();
             }
 
-            bucket = data;
-            done();
         });
+
     });
 
-    after((done) => {
-       // clean up bucket
-        client.destroyBucketById(bucket.id, done);
-    });
+    // after((done) => {
+    //    // clean up bucket
+    //    client.destroyBucketById(bucket.id, done);
+    // });
 
     describe('multiple uploads ', function () {
-        this.timeout(60000);
 
         it('should create a new upload', done => {
             let uploadData = {
                 bucket: bucket.id,
-                filename: 'myfile.exe',
+                filename: filename,
                 mimetype: 'application/x-msdownload'
             };
             client.createUpload(uploadData, (err, upload) => {
@@ -82,20 +107,21 @@ describe('Mylib Test - ', function () {
         });
 
         it('should create a new upload, add several parts and complete it', done => {
+            let len = 6;
             let parts = [
-                {partNum: 7, size: 10, content: Buffer.alloc(10, 7)},
-                {partNum: 2, size: 10, content: Buffer.alloc(10, 2)},
-                {partNum: 5, size: 10, content: Buffer.alloc(10, 5)},
-                {partNum: 3, size: 10, content: Buffer.alloc(10, 3)},
-                {partNum: 1, size: 10, content: Buffer.alloc(10, 1)},
-                {partNum: 6, size: 10, content: Buffer.alloc(10, 6)},
-                {partNum: 8, size: 10, content: Buffer.alloc(10, 8)},
-                {partNum: 4, size: 10, content: Buffer.alloc(10, 4)},
+                {partNum: 7, size: len, content: Buffer.alloc(len, 7)},
+                {partNum: 2, size: len, content: Buffer.alloc(len, 2)},
+                {partNum: 5, size: len, content: Buffer.alloc(len, 5)},
+                {partNum: 3, size: len, content: Buffer.alloc(len, 3)},
+                {partNum: 1, size: len, content: Buffer.alloc(len, 1)},
+                {partNum: 6, size: len, content: Buffer.alloc(len, 6)},
+                {partNum: 8, size: len, content: Buffer.alloc(len, 8)},
+                {partNum: 4, size: len, content: Buffer.alloc(len, 4)},
             ];
 
             let uploadData = {
                 bucket: bucket.id,
-                filename: 'test',
+                filename: filename,
                 mimetype: 'application/octet-stream'
             };
             client.createUpload(uploadData, (err, upload) => {
@@ -116,7 +142,10 @@ describe('Mylib Test - ', function () {
                             return next(err);
                         }
 
+                        console.log(entry);
+
                         part.hmac = entry.hmac;
+                        next();
                     });
                 }, (err) => {
                     if (err) {
@@ -154,6 +183,50 @@ describe('Mylib Test - ', function () {
 
                 });
 
+            });
+        });
+
+        it('should complete an upload successfully', done => {
+            let len = 6;
+            let parts = [
+                {partNum: 7, size: len, content: Buffer.alloc(len, 7)},
+                {partNum: 2, size: len, content: Buffer.alloc(len, 2)},
+                {partNum: 5, size: len, content: Buffer.alloc(len, 5)},
+                {partNum: 3, size: len, content: Buffer.alloc(len, 3)},
+                {partNum: 1, size: len, content: Buffer.alloc(len, 1)},
+                {partNum: 6, size: len, content: Buffer.alloc(len, 6)},
+                {partNum: 8, size: len, content: Buffer.alloc(len, 8)},
+                {partNum: 4, size: len, content: Buffer.alloc(len, 4)},
+            ];
+            let id = '5952366b9b5edd2940337572';
+
+            // complete upload
+            client.completeUploadById(id, parts.slice(0, 5), (err, file) => {
+                if (err) {
+                    return done(err);
+                }
+
+                console.log(file);
+
+                // read file content
+                client.createFileStream(bucket.id, file.id, (err, filedata) => {
+                    if (err) {
+                        return done(err);
+                    }
+
+                    let temp = [];
+                    filedata.on('error', done);
+                    filedata.on('data', function(buffer) {
+                        temp.push(buffer);
+                    });
+                    filedata.on('end', function() {
+                        let buff = Buffer.concat(temp);
+
+                        console.log(buff);
+                        done();
+                    });
+
+                });
             });
         });
 

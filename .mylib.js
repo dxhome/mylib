@@ -339,7 +339,7 @@ mylib.BridgeClient.prototype.addUploadPart = function (id, partNum, size, conten
                         frame: file.frame,
                         hmac: file.hmac,
                     };
-                    return this._request('POST', '/uploads/' + id + '/parts', partBody, callback);
+                    return self._request('POST', '/uploads/' + id + '/parts', partBody, callback);
                 });
             });
         });
