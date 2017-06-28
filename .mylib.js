@@ -3,6 +3,8 @@
 const through = require('through');
 const mime = require('mime');
 const async = require('async');
+const fs = require('fs');
+const path = require('path');
 const mylib = require('storj-lib');
 const consts = require('./.consts');
 
@@ -152,6 +154,29 @@ mylib.BridgeClient.prototype.storeEmptyFileInBucket = function(id, token, opts, 
 
 };
 
+/**
+ * Stores a file in the bucket and update hmac with md5sume
+ * @param {String} id - Unique bucket ID
+ * @param {String} token - Token from {@link BridgeClient#createToken}
+ * @param {String} file - Path to file to store
+ * @param {Function} callback
+ */
+// eslint-disable-next-line max-params
+mylib.BridgeClient.prototype.storeFileInBucket2 = function(id, token, file, opts, cb) {
+    let datastream;
+    let options = {};
+    if (typeof file === 'string') {
+        options.fileName = path.basename(file).split('.crypt')[0];
+        options.fileSize = fs.statSync(file).size;
+        datastream = fs.createReadStream(file);
+    } else {
+        datastream = file;
+        options = opts;
+    }
+
+    this.storeFileInBucket(id, token, datastream, options, cb);
+
+};
 
 /**
  * Create a stream for a given slice of a file; return 'encryptionKey' from token
