@@ -371,8 +371,16 @@ mylib.BridgeClient.prototype.addUploadPart = function (id, partNum, size, conten
 
     });
 
+};
 
-
+/**
+ * Lists the files stored in a bucket 2, support additional query
+ * @param {String} id - Unique bucket ID
+ * @param {Object} query - query info
+ * @param {Function} callback
+ */
+BridgeClient.prototype.listFilesInBucket2 = function(id, query, callback) {
+    return this._request('GET', '/buckets/' + id + '/files', query, callback);
 };
 
 module.exports = mylib;
