@@ -5,6 +5,7 @@ const mime = require('mime');
 const async = require('async');
 const fs = require('fs');
 const path = require('path');
+const merge = require('merge');
 const mylib = require('storj-lib');
 const consts = require('./.consts');
 
@@ -98,7 +99,7 @@ mylib.BridgeClient.prototype._getSliceParams = function(frame, bytesStart, bytes
 /**
  * create empty file entry on server side
  * @param id - bucket id
- * @param token - PUSH token
+ * @param token - PUSH token (no use)
  * @param opts - options
  * @param cb
  * @returns {*}
@@ -155,7 +156,7 @@ mylib.BridgeClient.prototype.storeEmptyFileInBucket = function(id, token, opts, 
 };
 
 /**
- * Stores a file in the bucket and update hmac with md5sume
+ * Stores a file in the bucket and update hmac with md5sum
  * @param {String} id - Unique bucket ID
  * @param {String} token - Token from {@link BridgeClient#createToken}
  * @param {String} file - Path to file to store
@@ -280,6 +281,17 @@ mylib.utils.createStreamTrimmer = function (trimFront, totalBytes) {
 mylib.constants.NET_REENTRY = 30000;
 
 /**
+ * Lists the uploads for a bucket
+ * @param {String} bucketid - Unique bucket ID
+ * @param {Object} query - query info
+ * @param {Function} callback
+ */
+mylib.BridgeClient.prototype.listUploads = function(bucketid, query, callback) {
+    let body = merge({bucket: bucketid}, query);
+    return this._request('GET', '/uploads', body, callback);
+};
+
+/**
  * create a new upload
  * @param upload - upload content (.bucket, .filename, .mimetype)
  * @param callback
@@ -379,8 +391,8 @@ mylib.BridgeClient.prototype.addUploadPart = function (id, partNum, size, conten
  * @param {Object} query - query info
  * @param {Function} callback
  */
-BridgeClient.prototype.listFilesInBucket2 = function(id, query, callback) {
-    return this._request('GET', '/buckets/' + id + '/files', query, callback);
+mylib.BridgeClient.prototype.listFilesInBucket2 = function(id, query, callback) {
+    return this._request('GET', '/buckets/' + id + '/files', query?query:{}, callback);
 };
 
 module.exports = mylib;

@@ -1,6 +1,6 @@
 'use strict';
 
-const expect = require('chai').expect;
+const {expect, assert} = require('chai');
 const mylib = require('.');
 const JSLogger = require('my-jslogger');
 const async = require('async');
@@ -29,9 +29,6 @@ describe('Mylib Test - ', function () {
         return mylib.utils.calculateBucketId(user, bucketName);
     }
 
-    function _randomStr() {
-
-    }
 
     before((done) => {
         let options = {
@@ -71,7 +68,100 @@ describe('Mylib Test - ', function () {
     //    client.destroyBucketById(bucket.id, done);
     // });
 
+    describe('list files 2', function () {
+        let names = ['a', 'aa', 'b', 'bb', 'c', 'cc', 'A', 'AA', 'B', 'BB', 'C', 'CC'];
+        let files = [];
+        before((done) => {
+            // create some files
+            async.each(names, (name, next) => {
+                client.storeEmptyFileInBucket(bucket.id, null, {fileName: name}, (err, file) => {
+                    if (err) {
+                        return next(err);
+                    }
+
+                    files.push(file);
+                    next();
+                });
+            }, done);
+        });
+
+        after((done) => {
+            async.each(files, (file, next) => {
+                client.removeFileFromBucket(bucket.id, file.id, next);
+            }, done);
+        });
+
+        it('should list files successfully without query', done => {
+            client.listFilesInBucket2(bucket.id, {startAfter: null}, (err, results) => {
+                if (err) {
+                    return done(err);
+                }
+
+                console.log('found files: ', results.map(x => x.filename));
+
+                assert(results.length >= files.length);
+
+                done();
+            })
+        });
+
+        it('should list files successfully with query startAfter=b', done => {
+            client.listFilesInBucket2(bucket.id, {startAfter: 'b'}, (err, results) => {
+                if (err) {
+                    return done(err);
+                }
+
+                console.log('found files: ', results.map(x => x.filename));
+
+                assert(results.length >= 3);
+
+                done();
+            })
+        });
+    });
+
     describe('multiple uploads ', function () {
+        it('should list all uploads', done => {
+            let query = null;
+
+            client.listUploads(bucket.id, query, (err, results) => {
+                if (err) {
+                    return done(err);
+                }
+
+                console.log(results);
+                done();
+            });
+        });
+
+        it('should list uploads with keyMarker only', done => {
+            let query = {keyMarker: 'myfile.ex'};
+
+            client.listUploads(bucket.id, query, (err, results) => {
+                if (err) {
+                    return done(err);
+                }
+
+                console.log(results);
+                done();
+            });
+        });
+
+        it('should list uploads with both keyMarker and uploadidMarker', done => {
+            let query = {
+                keyMarker: 'myfile.exe',
+                uploadidMarker: '595122151acdbdeb688f4260',
+            };
+
+            client.listUploads(bucket.id, query, (err, results) => {
+                if (err) {
+                    return done(err);
+                }
+
+                console.log(results);
+                done();
+            });
+        });
 
         it('should create a new upload', done => {
             let uploadData = {
