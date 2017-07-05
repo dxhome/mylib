@@ -69,7 +69,7 @@ describe('Mylib Test - ', function () {
     // });
 
     describe('store file 2', function () {
-        it('should store file successfully from a file', done => {
+        it('should store normal file successfully', done => {
             let fileSize = 20;
             let buf = Buffer.alloc(fileSize, 'a');
             let stream = new Readable({
@@ -89,6 +89,20 @@ describe('Mylib Test - ', function () {
                 done();
             })
         });
+
+        it('should store 0 size file successfully from a file', done => {
+
+            client.storeFileInBucket2(bucket.id, null, {fileName: filename, fileSize: 0}, (err, file) => {
+                if (err) {
+                    return done(err);
+                }
+
+                console.log(file);
+
+                done();
+            })
+        });
+
     });
 
     describe('list files 2', function () {

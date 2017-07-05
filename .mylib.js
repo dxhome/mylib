@@ -273,6 +273,16 @@ mylib.BridgeClient.prototype.storeFileInBucket2 = function(bucketid, file, opts,
 
 
     function storeInBucket(token, srcStream, next) {
+        function _updateCheckSum(bucketid, fileid, hmac) {
+            self.updateFileInfo(bucketid, fileid, hmac, (err) => {
+                if (err) {
+                    return self._logger.warn('cannot update md5sum for file %s on bucket %s, %s', fileName, bucketid, err.message);
+                } else {
+                    return self._logger.info('updated md5sum for file %s on bucket %s, md5sum: %s', fileName, bucketid, hmac.value);
+                }
+            });
+        }
+
         if (fileSize === 0) {
             self.storeEmptyFileInBucket(
                 bucketid,
@@ -286,7 +296,13 @@ mylib.BridgeClient.prototype.storeFileInBucket2 = function(bucketid, file, opts,
                     }
 
                     file.size = 0;
+                    file.hmac = {
+                        type: 'md5',
+                        value: 'd41d8cd98f00b204e9800998ecf8427e'
+                    };
                     next(null, file);
+
+                    _updateCheckSum(bucketid, file.id, file.hmac);
                 }
             );
         } else {
@@ -310,14 +326,7 @@ mylib.BridgeClient.prototype.storeFileInBucket2 = function(bucketid, file, opts,
                     };
                     next(null, file);
 
-                    // update file md5sum, this won't block main function
-                    self.updateFileInfo(bucketid, file.id, file.hmac, (err) => {
-                        if (err) {
-                            return self._logger.warn('cannot update md5sum for file %s on bucket %s, %s', file.filename, bucketid, err.message);
-                        } else {
-                            return self._logger.info('updated md5sum for file %s on bucket %s, md5sum: %s', file.filename, bucketid, checksum);
-                        }
-                    });
+                    _updateCheckSum(bucketid, file.id, file.hmac);
                 }
             );
         }
