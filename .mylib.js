@@ -6,7 +6,10 @@ const async = require('async');
 const fs = require('fs');
 const path = require('path');
 const merge = require('merge');
+const crypto = require('crypto');
 const mylib = require('storj-lib');
+const Transform = require('readable-stream').Transform;
+
 const consts = require('./.consts');
 
 // const url = require('url');
@@ -156,27 +159,165 @@ mylib.BridgeClient.prototype.storeEmptyFileInBucket = function(id, token, opts, 
 };
 
 /**
- * Stores a file in the bucket and update hmac with md5sum
- * @param {String} id - Unique bucket ID
- * @param {String} token - Token from {@link BridgeClient#createToken}
+ * Stores a file in the bucket and update hmac with md5sum; support empty file creation
+ * @param {String} bucketid - Unique bucket ID
  * @param {String} file - Path to file to store
  * @param {Function} callback
  */
 // eslint-disable-next-line max-params
-mylib.BridgeClient.prototype.storeFileInBucket2 = function(id, token, file, opts, cb) {
-    let datastream;
-    let options = {};
+mylib.BridgeClient.prototype.storeFileInBucket2 = function(bucketid, file, opts, cb) {
+    const self = this;
+    let retry = 6;
+    let hasher = crypto.createHash('md5');
+    let inputStream;
+    let fileName = null;
+    let fileSize = 0;
     if (typeof file === 'string') {
-        options.fileName = path.basename(file).split('.crypt')[0];
-        options.fileSize = fs.statSync(file).size;
-        datastream = fs.createReadStream(file);
+        fileName = path.basename(file).split('.crypt')[0];
+        fileSize = fs.statSync(file).size;
+        inputStream = fs.createReadStream(file);
     } else {
-        datastream = file;
-        options = opts;
+        inputStream = file;
+        fileName = opts.fileName;
+        fileSize = opts.fileSize;
+    }
+    let fileid = mylib.utils.calculateFileId(bucketid, fileName);
+
+    if (fileSize === null) {
+        return next(new Error('cannot support writing without size'));
     }
 
-    this.storeFileInBucket(id, token, datastream, options, cb);
+    function _genCrypterSecret (fileid, encryptionKey) {
+        if (encryptionKey) {
+            let fileKey = mylib.DeterministicKeyIv.getDeterministicKey(
+                encryptionKey, fileid);
+            return new mylib.DeterministicKeyIv(fileKey, fileid);
+        } else {
+            return null;
+        }
+    }
 
+    function checkFileExist(next) {
+        self.getFileInfo(bucketid, fileid, function(err, file) {
+            if (file) {
+                return done(new Error(key + ' exists in bucket ' + bucketid));
+            }
+
+            next();
+        });
+    }
+
+    function createToken(next) {
+        self.createToken(bucketid, 'PUSH', function(err, token) {
+            if (err) {
+                if (retry < 6) {
+                    retry++;
+                    return createToken(next);
+                }
+
+                return next(err);
+            }
+            next(null, token);
+        });
+    }
+
+    function createSourceStream(token, next) {
+        let hasherStream = new Transform({
+            transform(chunk, encoding, callback) {
+                hasher.update(chunk, encoding);
+                callback(null, chunk, encoding);
+            }
+        });
+
+        if (fileSize > 0) {
+            let secret = _genCrypterSecret(fileid, token.encryptionKey);
+            let encrypter = null;
+            if (secret) {
+                // encrypted data
+                encrypter = new mylib.EncryptStream(secret);
+                // return stream as early as possible
+                next(null, token, inputStream.pipe(hasherStream).pipe(encrypter));
+            } else {
+                // no encryption data
+                next(null, token, inputStream.pipe(hasherStream));
+            }
+
+            inputStream.on('error', (err) => {
+                hasher.emit('error', err).end();
+                hasherStream.emit('error', err).end();
+                if (encrypter) encrypter.emit('error', err).end();
+            });
+        } else {
+            // for empty file creating, no
+            next(null, token, null);
+        }
+    }
+
+
+    function storeInBucket(token, srcStream, next) {
+        if (fileSize === 0) {
+            self.storeEmptyFileInBucket(
+                bucketid,
+                token,
+                {
+                    fileName: fileName,
+                },
+                function(err, file) {
+                    if (err) {
+                        return next(err);
+                    }
+
+                    file.size = 0;
+                    next(null, file);
+                }
+            );
+        } else {
+            self.storeFileInBucket(
+                bucketid,
+                token,
+                srcStream,
+                {
+                    fileName: fileName,
+                    fileSize: fileSize,
+                },
+                function(err, file) {
+                    if (err) {
+                        return next(err);
+                    }
+
+                    let checksum = hasher.digest('hex');
+                    file.hmac = {
+                        type: 'md5',
+                        value: checksum
+                    };
+                    next(null, file);
+
+                    // update file md5sum, this won't block main function
+                    self.updateFileInfo(bucketid, file.id, file.hmac, (err) => {
+                        if (err) {
+                            return self._logger.warn('cannot update md5sum for file %s on bucket %s, %s', file.filename, bucketid, err.message);
+                        } else {
+                            return self._logger.info('updated md5sum for file %s on bucket %s, md5sum: %s', file.filename, bucketid, checksum);
+                        }
+                    });
+                }
+            );
+        }
+
+    }
+
+    async.waterfall([
+        checkFileExist,
+        createToken,
+        createSourceStream,
+        storeInBucket
+    ], function (err, file) {
+        if (err) {
+            return done(err);
+        }
+
+        done(null, file);
+    });
 };
 
 /**
@@ -283,7 +424,7 @@ mylib.constants.NET_REENTRY = 30000;
 /**
  * Lists the uploads for a bucket
  * @param {String} bucketid - Unique bucket ID
- * @param {Object} query - query info
+ * @param {Object} query - query info, {.keyMarker, .uploadidMarker}
  * @param {Function} callback
  */
 mylib.BridgeClient.prototype.listUploads = function(bucketid, query, callback) {
@@ -293,7 +434,7 @@ mylib.BridgeClient.prototype.listUploads = function(bucketid, query, callback) {
 
 /**
  * create a new upload
- * @param upload - upload content (.bucket, .filename, .mimetype)
+ * @param upload - upload content {.bucket, .filename, .mimetype}
  * @param callback
  * @returns {{abort}}
  */
@@ -324,7 +465,7 @@ mylib.BridgeClient.prototype.destroyUploadById = function (id, callback) {
 /**
  * complete an upload
  * @param id - upload id
- * @param parts - parts to complete upload
+ * @param parts - parts to complete upload, [{.partNum, .eTag}, ...]
  * @param callback
  * @returns {{abort}}
  */
@@ -388,7 +529,7 @@ mylib.BridgeClient.prototype.addUploadPart = function (id, partNum, size, conten
 /**
  * Lists the files stored in a bucket 2, support additional query
  * @param {String} id - Unique bucket ID
- * @param {Object} query - query info
+ * @param {Object} query - query info, {.startAfter}
  * @param {Function} callback
  */
 mylib.BridgeClient.prototype.listFilesInBucket2 = function(id, query, callback) {

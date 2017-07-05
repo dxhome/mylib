@@ -68,6 +68,29 @@ describe('Mylib Test - ', function () {
     //    client.destroyBucketById(bucket.id, done);
     // });
 
+    describe('store file 2', function () {
+        it('should store file successfully from a file', done => {
+            let fileSize = 20;
+            let buf = Buffer.alloc(fileSize, 1);
+            let stream = new Readable({
+                read(size) {
+                    this.push(buf);
+                    this.push(null);
+                }
+            });
+
+            client.storeFileInBucket2(bucket.id, stream, {fileName: filename, fileSize: fileSize}, (err, file) => {
+                if (err) {
+                    return done(err);
+                }
+
+                console.log(file);
+
+                done();
+            })
+        });
+    });
+
     describe('list files 2', function () {
         let names = ['a', 'aa', 'b', 'bb', 'c', 'cc', 'A', 'AA', 'B', 'BB', 'C', 'CC'];
         let files = [];
