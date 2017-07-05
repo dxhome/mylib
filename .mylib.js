@@ -517,35 +517,29 @@ mylib.BridgeClient.prototype.addUploadPart = function (id, partNum, size, conten
             return callback(err);
         }
 
-        self.createToken(upload.bucket, 'PUSH', function(err, token) {
+        // store part as a normal file first and remove bucket entry right after success
+        // use the left frame to create a part
+        self.storeFileInBucket2(upload.bucket, content, {
+            fileName: `part${partNum}-${upload.name}`,
+            fileSize: size,
+        }, (err, file) => {
             if (err) {
                 return callback(err);
             }
 
-            // store part as a normal file first and remove bucket entry right after success
-            // use the left frame to create a part
-            self.storeFileInBucket(upload.bucket, token, content, {
-                fileName: `part${partNum}-${upload.name}`,
-                fileSize: size,
-            }, (err, file) => {
+            // remove file entry but keep frame
+            self.removeFileFromBucket(upload.bucket, file.id, (err) => {
                 if (err) {
                     return callback(err);
                 }
 
-                // remove file entry but keep frame
-                self.removeFileFromBucket(upload.bucket, file.id, (err) => {
-                    if (err) {
-                        return callback(err);
-                    }
-
-                    // add part
-                    let partBody = {
-                        partnum: partNum,
-                        frame: file.frame,
-                        hmac: file.hmac,
-                    };
-                    return self._request('POST', '/uploads/' + id + '/parts', partBody, callback);
-                });
+                // add part
+                let partBody = {
+                    partnum: partNum,
+                    frame: file.frame,
+                    hmac: file.hmac,
+                };
+                return self._request('POST', '/uploads/' + id + '/parts', partBody, callback);
             });
         });
 

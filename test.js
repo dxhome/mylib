@@ -6,7 +6,7 @@ const JSLogger = require('my-jslogger');
 const async = require('async');
 const Readable = require('stream').Readable;
 const randomstring = require("randomstring");
-
+const crypto = require('crypto');
 let logger = new JSLogger();
 logger.pipe(process.stdout);
 
@@ -234,7 +234,7 @@ describe('Mylib Test - ', function () {
         });
 
         it('should create a new upload, add several parts and complete it', done => {
-            let len = 6;
+            let len = 3;
             let parts = [
                 {partNum: 7, size: len, content: Buffer.alloc(len, 7)},
                 {partNum: 2, size: len, content: Buffer.alloc(len, 2)},
@@ -280,7 +280,15 @@ describe('Mylib Test - ', function () {
                     }
 
                     // complete upload
-                    client.completeUploadById(upload.id, parts.slice(0, 5), (err, file) => {
+                    let completeParts = parts.slice(0, 5).map((part) => {
+                        let hasher = crypto.createHash('md5');
+                        hasher.update(part.content);
+                        return {
+                            partNum: part.partNum,
+                            eTag: hasher.digest('hex'),
+                        };
+                    });
+                    client.completeUploadById(upload.id, completeParts, (err, file) => {
                         if (err) {
                             return done(err);
                         }
