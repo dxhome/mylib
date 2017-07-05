@@ -170,8 +170,15 @@ mylib.BridgeClient.prototype.storeFileInBucket2 = function(bucketid, file, opts,
     let retry = 6;
     let hasher = crypto.createHash('md5');
     let inputStream;
-    let fileName = null;
+    let fileName;
     let fileSize = 0;
+    let notEncrypt = false;
+
+    if (typeof opts === 'function') {
+        cb = opts;
+        opts = {};
+    }
+
     if (typeof file === 'string') {
         fileName = path.basename(file).split('.crypt')[0];
         fileSize = fs.statSync(file).size;
@@ -180,8 +187,13 @@ mylib.BridgeClient.prototype.storeFileInBucket2 = function(bucketid, file, opts,
         inputStream = file;
         fileName = opts.fileName;
         fileSize = opts.fileSize;
+        notEncrypt = (typeof opts.notEncrypt !== 'undefined') ? true : false;
     }
     let fileid = mylib.utils.calculateFileId(bucketid, fileName);
+
+    if (fileName === null) {
+        return next(new Error('cannot support writing without filename'));
+    }
 
     if (fileSize === null) {
         return next(new Error('cannot support writing without size'));
@@ -230,8 +242,14 @@ mylib.BridgeClient.prototype.storeFileInBucket2 = function(bucketid, file, opts,
         });
 
         if (fileSize > 0) {
-            let secret = _genCrypterSecret(fileid, token.encryptionKey);
             let encrypter = null;
+            let secret;
+            if (notEncrypt) {
+                secret = null;
+            } else {
+                secret = _genCrypterSecret(fileid, token.encryptionKey);
+            }
+
             if (secret) {
                 // encrypted data
                 encrypter = new mylib.EncryptStream(secret);
@@ -313,10 +331,10 @@ mylib.BridgeClient.prototype.storeFileInBucket2 = function(bucketid, file, opts,
         storeInBucket
     ], function (err, file) {
         if (err) {
-            return done(err);
+            return cb(err);
         }
 
-        done(null, file);
+        cb(null, file);
     });
 };
 

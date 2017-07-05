@@ -71,7 +71,7 @@ describe('Mylib Test - ', function () {
     describe('store file 2', function () {
         it('should store file successfully from a file', done => {
             let fileSize = 20;
-            let buf = Buffer.alloc(fileSize, 1);
+            let buf = Buffer.alloc(fileSize, 'a');
             let stream = new Readable({
                 read(size) {
                     this.push(buf);
