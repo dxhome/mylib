@@ -557,4 +557,95 @@ mylib.BridgeClient.prototype.listFilesInBucket2 = function(id, query, callback) 
     return this._request('GET', '/buckets/' + id + '/files', query?query:{}, callback);
 };
 
+
+
+/**
+ * Generate audits for shard and add to frame, support reuse existing shard and add to frame
+ * @private
+ * @param {UploadState} state - The shard upload state machine
+ * @param {Object} meta - Shard metadata reference
+ * @param {Function} done - To be called on task complete
+ */
+mylib.BridgeClient.prototype._handleShardTmpFileFinish = function(state, meta, done) {
+    var self = this;
+    var hash = mylib.utils.rmd160(meta.hash);
+    var auditGenerator = new mylib.AuditStream(3);
+
+    var rs = self._store.createReadStream(meta.tmpName);
+
+    self._logger.info('Hash for this shard is: %s', hash);
+
+    function _handleError(err) {
+        self._logger.warn('Failed to upload shard...');
+        state.cleanup(function(err2){
+            // If there was an error, and we failed to cleanup temporary files, we
+            // propogate the collection of files that failed back to the caller. The
+            // logic is that the upload error isn't as immediately important as
+            // loosing track of files in the user's blobstore (s3, filesystem, etc)
+            return state.callback(err2 || err);
+        });
+    }
+
+    function _teardownAuditListeners() {
+        auditGenerator.removeAllListeners();
+    }
+
+    rs.on('error', _handleError);
+    state.on('killed', _teardownAuditListeners);
+
+    function _getContract(blacklist) {
+        if (state.killed) {
+            return done();
+        }
+
+        if (!meta.challenges && !meta.tree) {
+            meta.challenges = auditGenerator.getPrivateRecord().challenges;
+            meta.tree = auditGenerator.getPublicRecord();
+            self._logger.info('Audit generation for shard done.');
+        }
+
+        self._logger.info('Waiting on a storage offer from the network...');
+
+        var addShardToFrame = self.addShardToFileStagingFrame(meta.frame.id, {
+            hash: hash,
+            size: meta.size,
+            index: meta.index,
+            challenges: meta.challenges,
+            tree: meta.tree,
+            exclude: blacklist,
+        }, function(err, pointer) {
+            if (state.killed) {
+                return done();
+            }
+
+            if (err) {
+                return _handleError(err);
+            }
+
+            if (pointer.operation === 'REUSE') {
+                // support new operation 'REUSE' to use existing stored shard
+                // and bypass unnecessary data transferring
+                self._logger.info('Contract reused and skip shard transferring..., reused with: %j, ', pointer.farmer);
+                self._shardTransferComplete(state, meta.frame, done);
+            } else {
+                self._startTransfer(pointer, state, meta, done);
+            }
+        });
+
+        // Only register listener if addShardToFrame succeeds
+        if (addShardToFrame) {
+            state.removeListener('killed', _teardownAuditListeners);
+            state.on('killed', addShardToFrame.cancel);
+        }
+    }
+
+    self._blacklist.toObject(function(e, blacklist) {
+        if (meta.challenges && meta.tree) {
+            _getContract(blacklist);
+        } else {
+            rs.pipe(auditGenerator).on('finish', _getContract, blacklist);
+        }
+    });
+};
+
 module.exports = mylib;
