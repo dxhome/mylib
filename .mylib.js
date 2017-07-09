@@ -171,6 +171,7 @@ mylib.BridgeClient.prototype.storeFileInBucket2 = function(bucketid, file, opts,
     let hasher = crypto.createHash('md5');
     let inputStream;
     let fileName;
+    let fileOrgName; // mainly used for uploads
     let fileSize = 0;
     let notEncrypt = false;
 
@@ -181,13 +182,15 @@ mylib.BridgeClient.prototype.storeFileInBucket2 = function(bucketid, file, opts,
 
     if (typeof file === 'string') {
         fileName = path.basename(file).split('.crypt')[0];
+        fileOrgName = fileName;
         fileSize = fs.statSync(file).size;
         inputStream = fs.createReadStream(file);
     } else {
         inputStream = file;
         fileName = opts.fileName;
+        fileOrgName = opts.fileOrgName ? opts.fileOrgName : fileName;
         fileSize = opts.fileSize;
-        notEncrypt = (typeof opts.notEncrypt !== 'undefined') ? true : false;
+        notEncrypt = (typeof opts.notEncrypt !== 'undefined');
     }
     let fileid = mylib.utils.calculateFileId(bucketid, fileName);
 
@@ -199,11 +202,11 @@ mylib.BridgeClient.prototype.storeFileInBucket2 = function(bucketid, file, opts,
         return next(new Error('cannot support writing without size'));
     }
 
-    function _genCrypterSecret (fileid, encryptionKey) {
+    function _genCrypterSecret (seed, encryptionKey) {
         if (encryptionKey) {
             let fileKey = mylib.DeterministicKeyIv.getDeterministicKey(
-                encryptionKey, fileid);
-            return new mylib.DeterministicKeyIv(fileKey, fileid);
+                encryptionKey, seed);
+            return new mylib.DeterministicKeyIv(fileKey, seed);
         } else {
             return null;
         }
@@ -247,7 +250,8 @@ mylib.BridgeClient.prototype.storeFileInBucket2 = function(bucketid, file, opts,
             if (notEncrypt) {
                 secret = null;
             } else {
-                secret = _genCrypterSecret(fileid, token.encryptionKey);
+                let seed = mylib.utils.calculateFileId(bucketid, fileOrgName);
+                secret = _genCrypterSecret(seed, token.encryptionKey);
             }
 
             if (secret) {
@@ -521,6 +525,7 @@ mylib.BridgeClient.prototype.addUploadPart = function (id, partNum, size, conten
         // use the left frame to create a part
         self.storeFileInBucket2(upload.bucket, content, {
             fileName: `part${partNum}-${upload.name}`,
+            fileOrgName: upload.name,
             fileSize: size,
         }, (err, file) => {
             if (err) {
