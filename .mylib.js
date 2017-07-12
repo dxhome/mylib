@@ -173,7 +173,6 @@ mylib.BridgeClient.prototype.storeFileInBucket2 = function(bucketid, file, opts,
     let fileName;
     let fileOrgName; // mainly used for uploads
     let fileSize = 0;
-    let notEncrypt = false;
 
     if (typeof opts === 'function') {
         cb = opts;
@@ -190,8 +189,9 @@ mylib.BridgeClient.prototype.storeFileInBucket2 = function(bucketid, file, opts,
         fileName = opts.fileName;
         fileOrgName = opts.fileOrgName ? opts.fileOrgName : fileName;
         fileSize = opts.fileSize;
-        notEncrypt = (typeof opts.notEncrypt !== 'undefined');
     }
+    let notEncrypt = (typeof opts.notEncrypt !== 'undefined') ? opts.notEncrypt : false;
+
     let fileid = mylib.utils.calculateFileId(bucketid, fileName);
 
     if (fileName === null) {
@@ -508,12 +508,12 @@ mylib.BridgeClient.prototype.completeUploadById = function (id, parts, callback)
  * add a new part to upload
  * @param id - upload id
  * @param partNum - part number
- * @param size - size of content
+ * @param opts - (.size, .notEncrypt)
  * @param content - upload part content, a file or readable stream
  * @param callback
  * @returns {{abort}}
  */
-mylib.BridgeClient.prototype.addUploadPart = function (id, partNum, size, content, callback) {
+mylib.BridgeClient.prototype.addUploadPart = function (id, partNum, opts, content, callback) {
     let self = this;
 
     self.getUploadById(id, (err, upload) => {
@@ -526,7 +526,8 @@ mylib.BridgeClient.prototype.addUploadPart = function (id, partNum, size, conten
         self.storeFileInBucket2(upload.bucket, content, {
             fileName: `part${partNum}-${upload.name}`,
             fileOrgName: upload.name,
-            fileSize: size,
+            fileSize: opts.size,
+            notEncrypt: opts.notEncrypt,
         }, (err, file) => {
             if (err) {
                 return callback(err);
