@@ -215,7 +215,7 @@ mylib.BridgeClient.prototype.storeFileInBucket2 = function(bucketid, file, opts,
     function checkFileExist(next) {
         self.getFileInfo(bucketid, fileid, function(err, file) {
             if (file) {
-                return done(new Error(key + ' exists in bucket ' + bucketid));
+                return next(new Error(key + ' exists in bucket ' + bucketid));
             }
 
             next();
