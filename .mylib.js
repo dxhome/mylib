@@ -358,53 +358,87 @@ mylib.BridgeClient.prototype.storeFileInBucket2 = function(bucketid, file, opts,
  * @param {String} options.file - The file ID
  * @param {Number} options.start - The byte position to start slice
  * @param {Number} options.end - The byte position to end slice
+ * @param {Array} options.exclude - exclude farmers for reading
  */
 mylib.BridgeClient.prototype.createFileSliceStream2 = function(options, callback) {
     let self = this;
 
-    self.getFrameFromFile(options.bucket, options.file, function(err, frame) {
-        if (err) {
-            return callback(err);
+    self._blacklist.toObject((err, blacklist) => {
+        let excludes = [];
+        if (blacklist) {
+            excludes = Array.isArray(options.exclude) ? blacklist.concat(options.exclude) : blacklist;
+        } else {
+            excludes = options.exclude;
         }
+        self._logger.debug('creating file slice stream by excluding %j', excludes);
 
-        let sliceOpts = self._getSliceParams(frame, options.start, options.end);
-
-        self.createToken(options.bucket, 'PULL', function(err, token) {
+        self.getFrameFromFile(options.bucket, options.file, function(err, frame) {
             if (err) {
                 return callback(err);
             }
 
-            self.getFilePointers({
-                bucket: options.bucket,
-                token: token.token,
-                file: options.file,
-                skip: sliceOpts.skip,
-                limit: sliceOpts.limit
-            }, function(err, pointers) {
+            let sliceOpts = self._getSliceParams(frame, options.start, options.end);
+
+            self.createToken(options.bucket, 'PULL', function(err, token) {
                 if (err) {
                     return callback(err);
                 }
 
-                self._logger.info('Retrieving data from %d pointer(s).. ', pointers.length);
-
-                self.resolveFileFromPointers(pointers, function(err, stream) {
+                self.getFilePointers({
+                    bucket: options.bucket,
+                    token: token.token,
+                    file: options.file,
+                    skip: sliceOpts.skip,
+                    limit: sliceOpts.limit,
+                    exclude: excludes
+                }, function(err, pointers) {
                     if (err) {
                         return callback(err);
                     }
 
-                    // let trimStream = stream.pipe(mylib.utils.createStreamTrimmer(
-                    //     sliceOpts.trimFront,
-                    //     options.end - options.start + 1
-                    // ));
-                    // trimStream.encryptionKey = token.encryptionKey;
-                    //
-                    // callback(null, stream.pipe(trimStream));
+                    self._logger.info('Retrieving data from %d pointer(s).. ', pointers.length);
 
-                    stream.encryptionKey = token.encryptionKey;
-                    callback(null, stream);
+                    self.resolveFileFromPointers(pointers, function(err, stream) {
+                        if (err) {
+                            return callback(err);
+                        }
+
+                        // let trimStream = stream.pipe(mylib.utils.createStreamTrimmer(
+                        //     sliceOpts.trimFront,
+                        //     options.end - options.start + 1
+                        // ));
+                        // trimStream.encryptionKey = token.encryptionKey;
+                        //
+                        // callback(null, stream.pipe(trimStream));
+
+                        stream.encryptionKey = token.encryptionKey;
+                        callback(null, stream);
+                    });
                 });
             });
         });
+    });
+
+};
+
+/**
+ * Create a readable stream from the given bucket and file id, use client backlist by default
+ * @param {String} bucket - The unique bucket ID
+ * @param {String} file - The unique file ID
+ * @param {Object} [opt]
+ * @param {Array} [opt.exclude] - Exclude these nodeID's from pointers
+ * @param {Function} cb - Receives (err, stream)
+ */
+mylib.BridgeClient.prototype.createFileStream2 = function(bucket, file, opt, cb) {
+    let self = this;
+
+    self._blacklist.toObject((err, blacklist) => {
+        if (blacklist) {
+            opt.exclude = Array.isArray(opt.exclude) ? blacklist.concat(opt.exclude) : blacklist;
+        }
+        self._logger.debug('creating file stream by excluding %j', opt.exclude);
+
+        self.createFileStream(bucket, file, opt, cb);
     });
 };
 

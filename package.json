@@ -1,6 +1,6 @@
 {
   "name": "my-jslib",
-  "version": "1.0.17",
+  "version": "1.0.19",
   "description": "my-jslib base",
   "main": "index.js",
   "scripts": {
