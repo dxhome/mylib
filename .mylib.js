@@ -62,7 +62,7 @@ mylib.BridgeClient.prototype.updateFileInfo = function (bucketid, fileid, hmac, 
  */
 mylib.BridgeClient.prototype._getSliceParams = function(frame, bytesStart, bytesEnd) {
     var skip = 0;
-    var limit = 1;
+    var limit = 0;
     var count = 0;
     var trimFront = 0;
     var trimBack = 0;
@@ -76,7 +76,7 @@ mylib.BridgeClient.prototype._getSliceParams = function(frame, bytesStart, bytes
 
         count += shard.size;
 
-        if (bytesStart > count) {
+        if (bytesStart >= count) {
             skip++;
         } else if (!trimFrontSet) {
             trimFront = bytesStart - ( count - shard.size );
@@ -667,6 +667,16 @@ mylib.BridgeClient.prototype._handleShardTmpFileFinish = function(state, meta, d
                 // and bypass unnecessary data transferring
                 self._logger.info('Contract reused and skip shard transferring..., reused with: %j, ', pointer.farmer);
                 self._shardTransferComplete(state, meta.frame, done);
+                if (!meta.exchangeReport) {
+                    meta.exchangeReport = new mylib.ExchangeReport({
+                        reporterId: this._getReporterId(),
+                        clientId: this._getReporterId(),
+                        farmerId: pointer.farmer.nodeID
+                    });
+                    meta.exchangeReport.begin(pointer.hash);
+                }
+                meta.exchangeReport.end(mylib.ExchangeReport.SUCCESS, 'SHARD_REUSED');
+
             } else {
                 self._startTransfer(pointer, state, meta, done);
             }
